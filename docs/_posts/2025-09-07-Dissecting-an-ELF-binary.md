@@ -6,6 +6,9 @@ categories: ELF compilers
 ---
 ## Introduction
 
+This is the first post in a series that will offer a quick introduction to ELF files and how code relocation works.
+The second part of the series about code relocation can be found [here]({% post_url 2025-09-08-ELF-code-relocations %}).
+
 As the name suggests, an *Executable and Linkable Format* describes either:
  -  an *executable* that can be run by the Operating System
   - a file that can be *linked by other programs* (an object file or a library)
