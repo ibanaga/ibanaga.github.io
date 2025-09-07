@@ -67,14 +67,14 @@ The straightforward way of compiling (`gcc -c main.c -o sample_exe`) will link a
 So let's build this simple source code file and not link it against the standard library:
     - `-nostdlib` instructs the toolchain not to link against the standard library
 
-```bash
+```console
 $ gcc -c -nostdlib main.c -o main.o
 $ ld -o sample_exe main.o
 ld: warning: cannot find entry symbol _start; defaulting to 0000000000401000
 ```
 
  The commands succeeded despite warning. Let's try to run our newly built executable:
- ```bash
+ ```console
  $ ./sample_exe
 Segmentation fault (core dumped)
  ```
@@ -107,12 +107,12 @@ _start:
 ```
 
 We can now use the assembler to generate an object file...
-```bash
+```console
 $ as -o start.o start.s
 ```
 
 And then the linker to stitch `main.o` and `start.o` together into an executable:
-```bash
+```console
 $ ld -o sample_exe main.o start.o
 ld: warning: start.o: missing .note.GNU-stack section implies executable stack
 ld: NOTE: This behavior is deprecated and will be removed in a future version of the linker
@@ -123,7 +123,7 @@ main: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, no
 The flow worked fine, but the warning looks serious, an executable stack is not a good thing (we'll fix this later...).
 
 A quick sanity check on the resulting binary...
-```bash
+```console
 $ ./main
 $ echo $?
 30
@@ -133,7 +133,7 @@ $ echo $?
 
 ### The ELF header
 
-```bash
+```console
 $ readelf -h sample_exe 
 ELF Header:
   Magic:   7f 45 4c 46 02 01 01 00 00 00 00 00 00 00 00 00 
@@ -165,8 +165,8 @@ The ELF header gives us general information about the binary we’re looking at:
 
 ### The ELF sections
 
-```bash
-$ readelf -S sample_exe 
+```console
+$ readelf -S sample_exe
 There are 9 section headers, starting at offset 0x31c8:
 
 Section Headers:
@@ -214,8 +214,8 @@ Next, we see the expected `.text`, `.data` and `.bss` section, plus a few more.
 
 We can inspect the symbols in this file via `readelf`:
 
-```
- readelf -s sample_exe 
+```console
+$ readelf -s sample_exe 
 
 Symbol table '.symtab' contains 11 entries:
    Num:    Value          Size Type    Bind   Vis      Ndx Name
@@ -246,7 +246,7 @@ We also see that the address of the symbol `_start` matches the *entry point add
 
 ### The ELF program segments
 
-```bash
+```console
 $ readelf -l sample_exe 
 
 Elf file type is EXEC (Executable file)
@@ -293,7 +293,7 @@ We see that this binary has 4 loadable segments:
 - the last segment is not a loadable segment, but a special one which tells the OS loader is the stack is executable or not
   - RWE marks the stack as executable, which is not safe; this is why the toolchain warned us above when we linked our object code
   - to make the stack non-executable `-z noexecstack` must be passed to the linker:
-  ```
+  ```console
   $ ld -z noexecstack -o sample_exe main.o start.o
   $ readelf -l sample_exe | grep GNU_STACK -A 1
   GNU_STACK      0x0000000000000000 0x0000000000000000 0x0000000000000000
@@ -306,7 +306,7 @@ We see that this binary has 4 loadable segments:
 
 We can use `objdump` to disassembly our binary:
 
-```
+```console
 $ objdump -d sample_exe 
 
 sample_exe:     file format elf64-x86-64
@@ -347,7 +347,7 @@ Disassembly of section .text:
 
 We notice that the first instruction is at `0x401000` which matches the second loadable segment in the program header. That segments tell the OS loader to map from offset `0x1000` in the file.
 Let's confirm we have the expected data in the binary file using `hexdump`.
-```
+```console
 $ hexdump -C sample_exe | grep "0001000" -A 1
 00001000  f3 0f 1e fa 55 48 89 e5  89 7d fc 89 75 f8 8b 55  |....UH...}..u..U|
 00001010  fc 8b 45 f8 01 d0 5d c3  f3 0f 1e fa 55 48 89 e5  |..E...].....UH..|
@@ -355,7 +355,7 @@ $ hexdump -C sample_exe | grep "0001000" -A 1
 Great, we see the expected instruction bytes: `f3 0f 1e fa`....
 
 The data section should start at offset `0x3000` according to the third entry program table:
-```
+```console
 $ hexdump -C sample_exe | grep "0003000"
 00003000  0a 00 00 00 14 00 00 00  47 43 43 3a 20 28 55 62  |........GCC: (Ub|
 ```
@@ -383,7 +383,7 @@ typedef struct {
 ```
 
 Our entry should be at offset 12744 + 8 * sizeof(Elf64_Shdr) = 13256 (0x33c8).
-```
+```console
 $ hexdump -C sample_exe | grep "00033c0" -A 3
 000033c0  00 00 00 00 00 00 00 00  11 00 00 00 03 00 00 00  |................|
 000033d0  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
@@ -391,7 +391,7 @@ $ hexdump -C sample_exe | grep "00033c0" -A 3
 000033f0  00 00 00 00 00 00 00 00  01 00 00 00 00 00 00 00  |................|
 ```
 The address found in the binary is: 0x3186. Let's look at it:
-```
+```console
 $ hexdump -C sample_exe | grep "0003180" -A 4
 00003180  61 72 72 61 79 00 00 2e  73 79 6d 74 61 62 00 2e  |array...symtab..|
 00003190  73 74 72 74 61 62 00 2e  73 68 73 74 72 74 61 62  |strtab..shstrtab|
@@ -403,7 +403,7 @@ As expected, we find the null-terminated strings for all the 8 section names.
 
 
 Ok, we went the hard way just for fun, to do some more binary dissection. The section's info reported by `readelf -S` also gives us this offset in the last column:
-```
+```console
   [ 8] .shstrtab         STRTAB           0000000000000000  00003186
        000000000000003f  0000000000000000           0     0     1
 ```
