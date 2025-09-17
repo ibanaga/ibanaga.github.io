@@ -9,7 +9,7 @@ categories: u-boot SPL
 
 U-boot SPL does not use the full-fledged DTS for the HiFive Unleashed board, as it contains many devices that are of no interest for this early boot stage.
 
-Instead, it uses a trimmed down version of the DTS, only with nodes that are used during the boot stage (CPUs, clocks, DDR memory, SPI controller, Flash and EMMC for storage, etc).
+Instead, it uses a trimmed down version of the DTS, only with nodes that are used during the boot stage (CPUs, clocks, DDR memory, SPI controller, Flash and MMC for storage, etc).
 
 This post analyses the SPL DTS in order the understand what the SPL actually sees and needs during the the low level initialization of the target. It also explains some basic concepts about reading a DTS file. 
 
@@ -124,7 +124,7 @@ There are 5 cores x 2 interrupts → 10 tuples of the form (`core irq`). E.g.
 
 ### SPI Controllers
 
-There are two SPI controllers: one that handled the NOR flash and the other one which handles the EMMC.
+There are two SPI controllers: one that handled the NOR flash and the other one which handles the SD card.
 
 #### The NOR flash SPI controller
 
@@ -163,7 +163,7 @@ The `address-cells` and `size-cells` defined here will affect child nodes: so `f
 - reg = <0x00> denoted the ChipSelect line 0 used to access this device over SPI
 - max frequency is 50MHz
 
-#### The EMMC SPI controller
+#### The MMC SPI controller
 
 ```
 spi@10050000 {
@@ -302,7 +302,7 @@ The phandle 0x03 will be referenced by the CLINT when defining the interrupts ge
 	};
 ```
 
-On the real hardware, the BootROM will inspect the partition table of the storage medium (nand or emmc) and will look for a specific partition GUID to identify the second stage bootloader.
+On the real hardware, the BootROM will inspect the partition table of the storage medium (nand or sdcard) and will look for a specific partition GUID to identify the second stage bootloader.
 
 The Qemu emulation of the HiFive Unleashed does not reproduce the BootROM of the real hardware, and it uses this configuration option in the device tree to specify at which offset the SPL is stored.
 
