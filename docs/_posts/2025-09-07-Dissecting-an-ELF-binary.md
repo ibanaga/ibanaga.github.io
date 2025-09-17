@@ -119,15 +119,15 @@ And then the linker to stitch `main.o` and `start.o` together into an executable
 $ ld -o sample_exe main.o start.o
 ld: warning: start.o: missing .note.GNU-stack section implies executable stack
 ld: NOTE: This behavior is deprecated and will be removed in a future version of the linker
-$ file main
-main: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, not stripped
+$ file sample_exe
+sample_exe: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, not stripped
 ```
 
 The flow worked fine, but the warning looks serious, an executable stack is not a good thing (we'll fix this later...).
 
 A quick sanity check on the resulting binary...
 ```console
-$ ./main
+$ ./sample_exe
 $ echo $?
 30
 ```
