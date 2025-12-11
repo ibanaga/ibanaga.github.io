@@ -107,7 +107,7 @@ sbin
 usr
 
 $ cd _install
-$ mkdir mkdir etc proc sys
+$ mkdir dev etc proc sys
 
 $ cat << EOF > init                              
 #!/bin/sh
@@ -382,3 +382,166 @@ Our block length is 512 bytes, so every address and size from the SD Card will n
     SBI specification v3.0 detected
     ...
     ```
+
+### Booting from a FIT image
+
+A FIT image (Flat Image Tree) bundles together all the images (kernel, dtb, rootfs) into a single file.
+Each component has metadata which describes the type of the file, its destination address in RAM, entry point, etc.
+Different combinations of the available images can be defined in different configurations.
+
+The text file which describes the layout is called an *Image Tree Source* file (`.its` extension).
+
+The sample source image looks like:
+```
+/dts-v1/;
+
+/ {
+    description = "HiFive RiscV Linux FIT";
+    #address-cells = <1>;
+
+    images {
+        kernel {
+            description = "Linux kernel";
+            data = /incbin/("linux/arch/riscv/boot/Image");
+            type = "kernel";
+            arch = "riscv";
+            os = "linux";
+            compression = "none";
+            load = <0x80200000>;
+            entry = <0x80200000>;
+        };
+
+        fdt {
+            description = "Device Tree Blob";
+            data = /incbin/("linux/arch/riscv/boot/dts/sifive/hifive-unleashed-a00.dtb");
+            type = "flat_dt";
+            arch = "riscv";
+            compression = "none";
+            load = <0x88000000>;
+        };
+
+        initrd {
+            description = "initramfs";
+            data = /incbin/("busybox/initrd.cpio.gz");
+            type = "ramdisk";
+            arch = "riscv";
+            os = "linux";
+            compression = "none";
+            load = <0x88400000>;
+        };
+    };
+
+    configurations {
+        default = "conf";
+        conf {
+            description = "Boot Linux";
+            kernel = "kernel";
+            fdt = "fdt";
+            ramdisk = "initrd";
+        };
+    };
+};
+```
+
+The `mkimage` tool is used to compile an .its file into an Image Tree Blob (`.itb` extension).
+```
+mkimage -f fit-linux.its fit-linux.itb
+```
+
+Now that we have a FIT image which contains all necessary components for Linux to boot, we need to get it into the target's RAM:
+- via network transfer (e.g. tftp)
+- reading it from persistent storage, etc.
+
+For the Qemu use-case, we can make use of the `--device loader` argument which will just place a file at a specified memory address.
+Uboot will just find it at the expected address in DRAM and can use it (in this case offset 1GB from start of RAM).
+```
+qemu-system-riscv64 -M sifive_u,msel=6 -smp 5 -m 8G \
+-display none -serial mon:stdio \
+-bios u-boot/spl/u-boot-spl.bin \
+-drive file=images/spi-nor.img,if=mtd \
+-device loader,file=fit-linux.itb,addr=0xc0000000
+```
+
+After getting to the uboot prompt, we can use the `bootm <address>` command.
+
+This will parse the FIT image header and will place the embedded binary images at their destination addresses in RAM.
+After this it will update the FDT with runtime data needed by the kernel (the `/chosen` node), and will jump in the kernel.
+```
+=> bootm 0xc0000000
+## Loading kernel (any) from FIT Image at c0000000 ...
+...
+Freeing unused kernel image (initmem) memory: 2156K
+Run /init as init process
+~ #
+```
+
+
+The `bootm` command can be split into several individual steps that can also be executed manually.
+
+The main steps executed by the `bootm` command are:
+ - `start` : set the address of the ITB image and parse the headers
+ - `loados`, `ramdisk`, `fdt`: load components at their destination address in RAM
+ - `prep`: update the DTB with runtime info needed by the kernel
+ - `go` : jump into the kernel
+
+Let's now see how the individual steps look like when executed manually:
+
+```
+=> bootm start 0xc0000000
+## Loading kernel (any) from FIT Image at c0000000 ...
+...
+=> bootm loados
+   Loading Kernel Image to 80200000
+=> bootm ramdisk
+=> bootm fdt
+   Using Device Tree in place at 0000000088000000, end 0000000088005033
+Working FDT set to 88000000
+```
+
+The `/chosen` node (which is used to pass boot information to the kernel) has a single property:
+```
+=> fdt addr 88000000
+Working FDT set to 88000000
+=> fdt print /chosen
+chosen {
+	stdout-path = "serial0";
+};
+```
+
+The `bootm prep` will populate the `/chosen` node with runtime data needed by the kernel, the most important being the start and end of the initrd.
+```
+=> bootm prep
+   Using Device Tree in place at 0000000088000000, end 0000000088008033
+Working FDT set to 88000000
+=> fdt print /chosen
+chosen {
+	linux,initrd-end = <0x00000000 0x885311ca>;
+	linux,initrd-start = <0x00000000 0x88400000>;
+	u-boot,bootconf = "conf";
+	boot-hartid = <0x00000003>;
+	smbios3-entrypoint = <0x00000000 0xff75e000>;
+	u-boot,version = "2026.01-rc4-gff80e95fed18";
+	stdout-path = "serial0";
+};
+```
+
+You can also add arguments to the kernel cmdline by setting the `bootargs` environment variable before `bootm prep`:
+```
+=> setenv bootargs "loglevel=7"
+=> bootm prep
+   Using Device Tree in place at 0000000088000000, end 0000000088008033
+Working FDT set to 88000000
+=> fdt print /chosen
+chosen {
+	linux,initrd-end = <0x00000000 0x885311ca>;
+	linux,initrd-start = <0x00000000 0x88400000>;
+	u-boot,bootconf = "conf";
+	boot-hartid = <0x00000004>;
+	smbios3-entrypoint = <0x00000000 0xff75e000>;
+	u-boot,version = "2026.01-rc4-gff80e95fed18";
+	bootargs = "loglevel=7";
+	stdout-path = "serial0";
+};
+```
+
+`bootm go` will put the address of the current core in the `a0` register, the address of the DTB into the `a1` register and will jump into the kernel code.
