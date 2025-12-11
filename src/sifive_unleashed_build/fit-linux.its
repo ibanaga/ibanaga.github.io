@@ -1,0 +1,48 @@
+/dts-v1/;
+
+/ {
+    description = "HiFive RiscV Linux FIT";
+    #address-cells = <1>;
+
+    images {
+        kernel {
+            description = "Linux kernel";
+            data = /incbin/("linux/arch/riscv/boot/Image");
+            type = "kernel";
+            arch = "riscv";
+            os = "linux";
+            compression = "none";
+            load = <0x80200000>;
+            entry = <0x80200000>;
+        };
+
+        fdt {
+            description = "Device Tree Blob";
+            data = /incbin/("linux/arch/riscv/boot/dts/sifive/hifive-unleashed-a00.dtb");
+            type = "flat_dt";
+            arch = "riscv";
+            compression = "none";
+            load = <0x88000000>;
+        };
+
+        initrd {
+            description = "initramfs";
+            data = /incbin/("busybox/initrd.cpio.gz");
+            type = "ramdisk";
+            arch = "riscv";
+            os = "linux";
+            compression = "none";
+            load = <0x88400000>;
+        };
+    };
+
+    configurations {
+        default = "conf";
+        conf {
+            description = "Boot Linux";
+            kernel = "kernel";
+            fdt = "fdt";
+            ramdisk = "initrd";
+        };
+    };
+};
